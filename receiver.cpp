@@ -27,7 +27,7 @@ int main(int argc, char* argv[])
 	// read in args from command line user input-- Starting up client
 	if (argc != 4)
 	{
-		fprintf(stderr, "Incorrect input. Use commands of the following format: client <server hostname> <server portnumber> <filename>\n");
+		fprintf(stderr, "ERROR: Incorrect input. Use commands of the following format: client <server hostname> <server portnumber> <filename>\n");
 		exit(1);
 	}
 	srv_hostname = argv[1];
@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
 	// check arguments for errors
 	if (srv_portNum < 0)
 	{
-		fprintf(stderr, "portnum cannot be negative\n");
+		fprintf(stderr, "ERROR: portnum cannot be negative\n");
 		exit(1);
 	}
 
@@ -45,14 +45,14 @@ int main(int argc, char* argv[])
 	srv_ent = (struct hostent*)gethostbyname(srv_hostname);	
 	if (!srv_ent)
 	{
-		fprintf(stderr, "Invalid hostname\n");
+		fprintf(stderr, "ERROR: Invalid hostname\n");
 		exit(1);
 	}
 	
 	// initialize the socket
 	if ((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
 	{
-		fprintf(stderr, "Socket failed to open\n");
+		fprintf(stderr, "ERROR: A problem occured while opening the socket\n");
 		exit(1);
 	}
 
@@ -71,16 +71,18 @@ int main(int argc, char* argv[])
 	// send request message
 	if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr*)&srv_addr, slen) == -1)
 	{
-		fprintf(stderr, "Error sending file request message\n");
+		fprintf(stderr, "ERROR: An error occured while sending a file request\n");
 		exit(1);
 	}
 
-	printf("Request sent... Awaiting file\n");
+	printf("Sending packet SYN\n");
+
+	//printf("Request sent... Awaiting file\n");
 	
 	FILE *fp = fopen("received.data", "w+");
 	if (fp == NULL)
 	{
-		fprintf(stderr, "Error opening file for writing\n");
+		fprintf(stderr, "ERROR: A problem occured while opening the file for writing\n");
 		exit(1);
 	}
 	
@@ -101,28 +103,27 @@ int main(int argc, char* argv[])
 	char tempDataBuffer[DATA_SIZE];
 	memset((char*)&tempDataBuffer, 0, DATA_SIZE);	
 	
-	
 	while (true) {
 
-		fprintf(stderr, "IN WHILE LOOP!\n");
+		//fprintf(stderr, "IN WHILE LOOP!\n");
 
 		memset((char*)&inPacket, 0, sizeof(inPacket));
 		if (recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&srv_addr, (socklen_t *)&slen) == -1) {
 			fclose(fp);
-			fprintf(stderr, "Error receiving file\n");
+			fprintf(stderr, "ERROR: A problem occured while receiving the file\n");
 			exit(1);
 		}
 		else if (inPacket.seq == 0 && inPacket.type == FIN) { // file does not exist
-			fprintf(stderr, "RECEIVED PACKET <3!\n");
+			//fprintf(stderr, "RECEIVED PACKET <3!\n");
 
 			fclose(fp);	
-			fprintf(stderr, "No such file\n");
+			fprintf(stderr, "ERROR: No such file exists\n");
 			exit(1);
 		}
 		
 		else if (inPacket.type == DATA){
-			printf("Recvd (type: %c, seq: %d, size: %d)\n",
-				inPacket.type, inPacket.seq, inPacket.size);
+			printf("Receiving packet %d\n",
+				inPacket.seq);
 
 			outPacket.seq = inPacket.seq;
 			seqInWindow = inPacket.seq - windowBase;
@@ -132,12 +133,12 @@ int main(int argc, char* argv[])
 			}
 			else if ( inPacket.seq >= windowBase && inPacket.seq < (windowBase + cwnd)) {
 
-				fprintf(stderr, "\nHERE I AM!\n inPacket.seq = %d\n windowBase = %d\n", inPacket.seq, windowBase);
+				//fprintf(stderr, "\nHERE I AM!\n inPacket.seq = %d\n windowBase = %d\n", inPacket.seq, windowBase);
 
 				if (inPacket.seq == windowBase) {
 					fwrite(inPacket.data, sizeof(char), inPacket.size, fp);
 					// go through buffer and deliver any buffered packets, in order
-					printf("WROTE TO FILE: packet number %d\n\n", windowBase);
+					//printf("WROTE TO FILE: packet number %d\n\n", windowBase);
 
 					shift = 1;
 
@@ -151,7 +152,7 @@ int main(int argc, char* argv[])
 						else {
 							fwrite(windowBuffer + (DATA_SIZE*i), sizeof(char), DATA_SIZE, fp);
 							shift++;
-							printf("WROTE TO FILE: packet number %d\n\n", windowBase+i);
+							//printf("WROTE TO FILE: packet number %d\n\n", windowBase+i);
 						}
 					} 
 
@@ -181,26 +182,26 @@ int main(int argc, char* argv[])
 			
 		}
 		else {
-			fprintf(stderr, "RECEIVED PACKET <3!\n");
+			//fprintf(stderr, "RECEIVED PACKET <3!\n");
 			if (inPacket.type == FIN) {
-				printf("Recvd (type: %c, seq: %d, size: %d)\n",
-					inPacket.type, inPacket.seq, inPacket.size);
+				printf("Receiving packet %d FIN\n",
+				inPacket.seq);
 				break;
 			}
 			else {
-				printf("Received non-data packet. Ignored\n");
+				printf("WARNING: Received non-data packet. Ignored\n");
 				continue;
 			}
 		}
-		fprintf(stderr, "RECEIVED PACKET!\n");
+		//fprintf(stderr, "RECEIVED PACKET!\n");
 		
 		if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr *)&srv_addr, slen) == -1)
 		{
-			fprintf(stderr, "Error sending ACK packet\n");
+			fprintf(stderr, "ERROR: A problem occured while sending an ACK packet\n");
 			exit(1);
 		}
-		printf("Sent (type: %c, seq: %d, size: %d)\n",
-				outPacket.type, outPacket.seq, outPacket.size);
+		printf("Sending packet %d\n",
+				outPacket.seq);
 	}
 
 	// send FIN ACK
@@ -209,13 +210,13 @@ int main(int argc, char* argv[])
 	outPacket.size = 0;
 	if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr *)&srv_addr, slen) == -1)
 	{
-		fprintf(stderr, "Error sending FIN ACK packet\n");
+		fprintf(stderr, "ERROR: A provlem occured while sending FIN_ACK packet\n");
 		exit(1);
 	}
-	printf("Sent (type: %c, seq: %d, size: %d)\n",
-				outPacket.type, outPacket.seq, outPacket.size);
+	printf("Sending packet %d FIN_ACK\n",
+				outPacket.seq);
 	
-	printf("Connection closed\n");
+	//printf("Connection closed\n");
 	
 	fclose(fp);
 	close(sockfd);

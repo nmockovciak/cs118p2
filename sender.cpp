@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
 	// get arguments from command line
 	if (argc != 2)
 	{
-		fprintf(stderr, "Incorrect input. Use commands of the following format: server <server portnumber> <filename>\n");
+		fprintf(stderr, "ERROR: Incorrect input. Use commands of the following format: server <server portnumber> <filename>\n");
 		exit(1);
 	}
 	port_num = atoi(argv[1]);
@@ -38,14 +38,14 @@ int main(int argc, char* argv[])
 	// check arguments for errors
 	if (port_num < 0)
 		{
-		fprintf(stderr, "portnum must be non-negative\n");
+		fprintf(stderr, "ERROR: portnum cannot be negative\n");
 		exit(1);
 	}
 
 	// create socket
 	if ((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
 	{
-		fprintf(stderr, "Error opening socket\n");
+		fprintf(stderr, "ERROR: could not open the socket\n");
 		exit(1);
 	}
 
@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
 	// bind socket to port
 	if (bind(sockfd, (struct sockaddr *) &srv_addr, clen) == -1)
 	{
-		fprintf(stderr, "Error binding socket\n");
+		fprintf(stderr, "ERROR: could not bind to the socket\n");
 		exit(1);
 	}
 	
@@ -65,19 +65,19 @@ int main(int argc, char* argv[])
 	
 	while (true) {
 		// process file request
-		printf("\nWaiting for file request\n");
+		//printf("\nWaiting for file request\n");
 
 		if (recvfrom(sockfd, &inPacket, PACKET_SIZE, 0, (struct sockaddr*)&cli_addr, (socklen_t *)&clen) == -1) {
-			printf("Error receiving file request\n");
+			printf("WARNING: a problem occured while receiving the file request\n");
 			continue;
 		}
 		else if (inPacket.type != REQ) {
-			printf("Received non-request packet. Ignored\n");
+			printf("WARNING: Received a non-request packet. Ignore\n");
 			continue;
 		}
 		
 		filename = inPacket.data;
-		printf("Received file request for \"%s\"\n", filename);
+		//printf("Received file request for \"%s\"\n", filename);
 		
 		FILE *fp = fopen(filename, "r");
 		if (fp == NULL) { 
@@ -88,14 +88,14 @@ int main(int argc, char* argv[])
 
 			if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr*)&cli_addr, clen) == -1)
 			{
-				fprintf(stderr, "Error sending FIN packet\n");
+				fprintf(stderr, "ERROR: a problem occured while sending a FIN packet\n");
 				exit(1);
 			}
-			printf("No such file. Sent FIN\n");
+			printf("WARNING: The file does not exist.\n");
 			continue;
 		}
 
-		fprintf(stderr, "AFTER READIN FILE IN!\n");
+		//fprintf(stderr, "AFTER READIN FILE IN!\n");
 		
 		// read file into memory buffer
 		fseek(fp, 0L, SEEK_END);
@@ -105,15 +105,6 @@ int main(int argc, char* argv[])
 		fread(file_buf, sizeof(char), file_size, fp);
 		
 		fclose(fp);
-
-
-
-		// we can have up to N (cwnd) unACKED packets in pipeline
-		// we have a timer for each unACKed packet
-			// when timer expires, retransmit only unACKed packet
-
-		// if we received smallest ACK we are waiting for in window, advance window base to next unACKed seq number
-
 	
 		int totPackets = file_size/DATA_SIZE + (file_size % DATA_SIZE != 0);
 
@@ -124,7 +115,7 @@ int main(int argc, char* argv[])
 		int sentPackets[totPackets];		// keep track of packets successfully sent
 
 		memset((char*)&ACKED, 0, sizeof(int)*totPackets);
-		memset((char*)&ACKED, 0, sizeof(int)*totPackets);
+		memset((char*)&sentPackets, 0, sizeof(int)*totPackets);
 
 		bool newACK = false;
 		bool recPacket = false;
@@ -142,11 +133,13 @@ int main(int argc, char* argv[])
 		fd_set set;
 		struct timeval timeout = {0.25, 0}; // 250 ms timeout
 
-		printf("\n total number of packets = %d \n window size = %d \n", totPackets, cwnd);
+		//printf("\n total number of packets = %d \n window size = %d \n", totPackets, cwnd);
+
+		int SYNsent = 0;
 
 		while (windowBase < totPackets) {	// sending all packets AND waiting for ACKs
 
-			fprintf(stderr, "IN WHILE LOOP FOR SENDING PACKETS AND RECEIVING ACKS!\n");
+			//fprintf(stderr, "IN WHILE LOOP FOR SENDING PACKETS AND RECEIVING ACKS!\n");
 
 			newACK = false;
 			recPacket = false;
@@ -168,21 +161,21 @@ int main(int argc, char* argv[])
 
 			if (select(sockfd+1, &set, NULL, NULL, &timeout) > 0) {
 				if(recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&cli_addr, (socklen_t *)&clen) == -1) {
-					fprintf(stderr, "Error retrieving packet from receiver\n");
+					fprintf(stderr, "ERROR: a problem occured while retrieving a packet from the receiver\n");
 					exit(1);
 				}
-				printf("Recvd (type: %c, seq: %d, size: %d)\n",
-				inPacket.type, inPacket.seq, inPacket.size);
+				printf("Receiving packet %d\n",
+				inPacket.seq);
 				recPacket = true;
 			}
 
 			if( recPacket && inPacket.type != ACK ) {
-				fprintf(stderr, "Expected an ACK, but received a different type of packet\n");
+				fprintf(stderr, "ERROR: Received a non-ACK packet\n");
 				exit(1);
 			}
 			else if (recPacket){
 				if (inPacket.seq < windowBase || inPacket.seq > (windowBase	+ cwnd)) {
-					fprintf(stderr, "Received an ACK which is not within current window\n");
+					fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
 					exit(1);
 				}
 				newACK = true;
@@ -196,7 +189,7 @@ int main(int argc, char* argv[])
 
 			for (curSeqNum = windowBase; curSeqNum < boundary; curSeqNum++ ) {		// SEND or receive ACKs for each packet in window
 				
-				printf("\n\n IN FOR LOOP: \n window base = %d, \ncurrent seq number = %d, \ncurrent sequence number sent yet? %d,\ncurrent sequence number ACKed yet? %d,\nreceived packet? %d \n \n", windowBase, curSeqNum, sentPackets[curSeqNum], ACKED[curSeqNum], recPacket);
+				//printf("\n\n IN FOR LOOP: \n window base = %d, \ncurrent seq number = %d, \ncurrent sequence number sent yet? %d,\ncurrent sequence number ACKed yet? %d,\nreceived packet? %d \n \n", windowBase, curSeqNum, sentPackets[curSeqNum], ACKED[curSeqNum], recPacket);
 
 				if(! sentPackets[curSeqNum])						// not yet sent
 				{
@@ -221,11 +214,20 @@ int main(int argc, char* argv[])
 		
 					if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr *)&cli_addr, clen) == -1)
 					{
-						fprintf(stderr, "Error sending data packet\n");
+						fprintf(stderr, "ERROR: A problem occured while sending a data packet\n");
 						exit(1);
 					}
-					printf("Sent  (type: %c, seq: %d, size: %d)\n",
-							outPacket.type, outPacket.seq, outPacket.size);
+					
+					if (SYNsent) {
+						printf("Sending packet %d %d\n",
+							outPacket.seq, windowBase);
+					}
+					else {
+						printf("Sending packet %d %d SYN\n",
+							outPacket.seq, windowBase);
+						SYNsent = 1;
+					}
+					
 
 					sentPackets[curSeqNum] = 1;
 					generalTimer = std::clock();
@@ -236,7 +238,7 @@ int main(int argc, char* argv[])
 				else if( newACK && inPacket.seq == curSeqNum) {		// ACKed
 					ACKED[curSeqNum] = 1;
 				}
-				else if(!ACKED[curSeqNum]) {						// unACKed
+				else if(sentPackets[curSeqNum] && !ACKED[curSeqNum]) {						// unACKed
 					timePassed = ( std::clock() - pktTimers[curSeqNum] ) / (double) CLOCKS_PER_SEC;
 					
 					if (timePassed > 0.5) { 	// timed out-- resend packet
@@ -264,8 +266,8 @@ int main(int argc, char* argv[])
 							fprintf(stderr, "Error sending data packet\n");
 							exit(1);
 						}	
-						printf("Resent  (type: %c, seq: %d, size: %d)\n",
-							outPacket.type, outPacket.seq, outPacket.size);
+						printf("Sending packet %d %d Retransmission\n",
+							outPacket.seq, windowBase);
 						generalTimer = std::clock();
 
 						// RESTART TIMER
@@ -285,12 +287,12 @@ int main(int argc, char* argv[])
 
 		if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr *)&cli_addr, clen) == -1)
 		{
-			fprintf(stderr, "Error sending FIN packet\n");
+			fprintf(stderr, "ERROR: a problem occured while sending a FIN packet\n");
 			exit(1);
 		}
 		
-		printf("Sent  (type: %c, seq: %d, size: %d \n",
-				outPacket.type, outPacket.seq, outPacket.size);
+		printf("Sending packet %d %d FIN\n",
+				outPacket.seq, windowBase);
 		
 		// wait for FIN ACK
 		if (recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&cli_addr, (socklen_t *)&clen) == -1)
@@ -298,10 +300,10 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "Error receiving ACK packet\n");
 			exit(1);
 		}	
-		printf("Recvd (type: %c, seq: %d, size: %d)\n",
-				inPacket.type, inPacket.seq, inPacket.size);
+		printf("Receiving packet %d\n",
+				inPacket.seq);
 				
-		printf("Connection closed\n");
+		//printf("Connection closed\n");
 		free(file_buf);
 	}
 

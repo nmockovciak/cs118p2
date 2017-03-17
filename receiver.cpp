@@ -77,12 +77,7 @@ int main(int argc, char* argv[])
 
 	printf("Request sent... Awaiting file\n");
 	
-	// open file for writing
-	char n_filename[DATA_SIZE];
-	strcpy(n_filename, "n_");
-	strcat(n_filename, filename);
-	//.strcat(n_filename, filename);
-	FILE *fp = fopen(n_filename, "w+");
+	FILE *fp = fopen("received.data", "w+");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "Error opening file for writing\n");

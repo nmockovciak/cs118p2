@@ -1,8 +1,8 @@
 CC = g++
 all: server client
-server: sender.cpp
-	$(CC) sender.cpp -o sender -w
-client: receiver.cpp
-	$(CC) receiver.cpp -o receiver -w
+server: server.cpp
+	$(CC) server.cpp -o server -w
+client: client.cpp
+	$(CC) client.cpp -o client -w
 clean:
-	rm -f sender receiver received.data
+	rm -f server client received.data

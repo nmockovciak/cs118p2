@@ -16,10 +16,9 @@
 
 
 typedef struct {
-	char type; // 1: Request, 2: Data, 3: ACK, 4: FIN
-	unsigned int seq;	// sequence # or ACK #
+	char type;
+	unsigned int seq;	
 	unsigned int size; 
-	//int corr;
 	char data[DATA_SIZE];
 } Packet;
 

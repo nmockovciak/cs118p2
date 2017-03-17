@@ -5,4 +5,4 @@ server: sender.cpp
 client: receiver.cpp
 	$(CC) receiver.cpp -o receiver -w
 clean:
-	rm -f sender receiver n_*
+	rm -f sender receiver received.data

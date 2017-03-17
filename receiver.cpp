@@ -19,12 +19,11 @@ int main(int argc, char* argv[])
 	struct hostent *srv_ent;							// server database
 	int sockfd, srv_portNum, slen = sizeof(srv_addr);		
 	char *srv_hostname, *filename;
-	double pl, pc;
 	Packet inPacket, outPacket;
 
 	int cwnd = WINDOW_SIZE/PACKET_SIZE;
+	const int SIZE_MAX_SEQ = MAX_SEQUENCE_NUM/PACKET_SIZE;
 
-	// read in args from command line user input-- Starting up client
 	if (argc != 4)
 	{
 		fprintf(stderr, "ERROR: Incorrect input. Use commands of the following format: client <server hostname> <server portnumber> <filename>\n");
@@ -60,15 +59,13 @@ int main(int argc, char* argv[])
 	srv_addr.sin_family = AF_INET;
 	srv_addr.sin_port = htons(srv_portNum);
 	memcpy((char*) &srv_addr.sin_addr.s_addr, (char*) srv_ent->h_addr, srv_ent->h_length);
-	
-	// construct request message
+
 	memset((char*)&outPacket, 0, sizeof(outPacket));
 	outPacket.type = REQ;
 	outPacket.seq = 0;
 	outPacket.size = strlen(filename);
 	memcpy(outPacket.data, filename, outPacket.size);
 	
-	// send request message
 	if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr*)&srv_addr, slen) == -1)
 	{
 		fprintf(stderr, "ERROR: An error occured while sending a file request\n");
@@ -123,19 +120,24 @@ int main(int argc, char* argv[])
 		
 		else if (inPacket.type == DATA){
 			printf("Receiving packet %d\n",
-				inPacket.seq);
+				(inPacket.seq* DATA_SIZE));
 
 			outPacket.seq = inPacket.seq;
-			seqInWindow = inPacket.seq - windowBase;
+			seqInWindow = inPacket.seq - (windowBase % SIZE_MAX_SEQ);
 
-			if (inPacket.seq < windowBase && inPacket.seq > (windowBase - cwnd) ) {
-				// just send ACK, below
-			}
-			else if ( inPacket.seq >= windowBase && inPacket.seq < (windowBase + cwnd)) {
+			// if (inPacket.seq < windowBase && inPacket.seq > (windowBase - cwnd) ) {
+			// 	// just send ACK, below
+			// }
 
+			//fprintf(stderr, "\nHERE I AM!\n inPacket.seq = %d\n windowBase = %d\n (windowBase+cwnd) SIZE_MAX_SEQ = %d\n windowBase SIZE_MAX_SEQ = %d \n", inPacket.seq, windowBase, (windowBase+cwnd)%SIZE_MAX_SEQ, windowBase%SIZE_MAX_SEQ);
+
+			if ( ( ((windowBase+cwnd)%SIZE_MAX_SEQ > windowBase%SIZE_MAX_SEQ) && (inPacket.seq >= windowBase%SIZE_MAX_SEQ && inPacket.seq < (windowBase + cwnd)%SIZE_MAX_SEQ) ) || 
+						( ((windowBase+cwnd)%SIZE_MAX_SEQ < windowBase % SIZE_MAX_SEQ)  && !( inPacket.seq < windowBase%SIZE_MAX_SEQ && inPacket.seq >= (windowBase+cwnd)%SIZE_MAX_SEQ) )) {
+
+				//fprintf(stderr, "IN IF STATEMENT THO\n\n");
 				//fprintf(stderr, "\nHERE I AM!\n inPacket.seq = %d\n windowBase = %d\n", inPacket.seq, windowBase);
 
-				if (inPacket.seq == windowBase) {
+				if (inPacket.seq == windowBase % SIZE_MAX_SEQ) {
 					fwrite(inPacket.data, sizeof(char), inPacket.size, fp);
 					// go through buffer and deliver any buffered packets, in order
 					//printf("WROTE TO FILE: packet number %d\n\n", windowBase);
@@ -185,7 +187,7 @@ int main(int argc, char* argv[])
 			//fprintf(stderr, "RECEIVED PACKET <3!\n");
 			if (inPacket.type == FIN) {
 				printf("Receiving packet %d FIN\n",
-				inPacket.seq);
+				(inPacket.seq* DATA_SIZE));
 				break;
 			}
 			else {
@@ -201,7 +203,7 @@ int main(int argc, char* argv[])
 			exit(1);
 		}
 		printf("Sending packet %d\n",
-				outPacket.seq);
+				(outPacket.seq * DATA_SIZE));
 	}
 
 	// send FIN ACK
@@ -214,7 +216,7 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 	printf("Sending packet %d FIN_ACK\n",
-				outPacket.seq);
+				(outPacket.seq* DATA_SIZE));
 	
 	//printf("Connection closed\n");
 	

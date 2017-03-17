@@ -21,10 +21,10 @@ int main(int argc, char* argv[])
 	struct sockaddr_in srv_addr, cli_addr;
 	int sockfd, port_num, cwnd;
 	int clen = sizeof(cli_addr);
-	double pl, pc;
 	char *filename;
 	Packet inPacket, outPacket;
 	
+	const int SIZE_MAX_SEQ = MAX_SEQUENCE_NUM/PACKET_SIZE;
 	cwnd = WINDOW_SIZE/PACKET_SIZE;
 
 	// get arguments from command line
@@ -60,6 +60,8 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "ERROR: could not bind to the socket\n");
 		exit(1);
 	}
+
+
 	
 	//srand(time(NULL));
 	
@@ -108,20 +110,20 @@ int main(int argc, char* argv[])
 	
 		int totPackets = file_size/DATA_SIZE + (file_size % DATA_SIZE != 0);
 
-		int windowBase = 0;	// most recent value? idk?
+		int windowBase = 0;
 		int totPacketsSent = 0;
 
-		int ACKED[totPackets]; 					// keep track of unACKed packets
-		int sentPackets[totPackets];		// keep track of packets successfully sent
+		int ACKED[SIZE_MAX_SEQ]; 					// keep track of unACKed packets
+		int sentPackets[SIZE_MAX_SEQ];		// keep track of packets successfully sent
 
-		memset((char*)&ACKED, 0, sizeof(int)*totPackets);
-		memset((char*)&sentPackets, 0, sizeof(int)*totPackets);
+		memset((char*)&ACKED, 0, sizeof(int)*SIZE_MAX_SEQ);
+		memset((char*)&sentPackets, 0, sizeof(int)*SIZE_MAX_SEQ);
 
 		bool newACK = false;
 		bool recPacket = false;
 
-		std::clock_t pktTimers[totPackets];
-		memset((char*)&pktTimers, 0, sizeof(std::clock_t)*totPackets);
+		std::clock_t pktTimers[SIZE_MAX_SEQ];
+		memset((char*)&pktTimers, 0, sizeof(std::clock_t)*SIZE_MAX_SEQ);
 
 		double timePassed;
 
@@ -136,18 +138,24 @@ int main(int argc, char* argv[])
 		//printf("\n total number of packets = %d \n window size = %d \n", totPackets, cwnd);
 
 		int SYNsent = 0;
+		int indexCSN = 0;
 
 		while (windowBase < totPackets) {	// sending all packets AND waiting for ACKs
 
-			//fprintf(stderr, "IN WHILE LOOP FOR SENDING PACKETS AND RECEIVING ACKS!\n");
+			//printf("IN WHILE LOOP!  current seq num = %d windowBase = %d AND SIZE_MAX_SEQ = %d\n", indexCSN, windowBase%SIZE_MAX_SEQ, SIZE_MAX_SEQ);
 
 			newACK = false;
 			recPacket = false;
 
-			if(ACKED[windowBase]) {
+			if(ACKED[windowBase%SIZE_MAX_SEQ]) {
+				//fprintf(stderr, "HERE 3 \n");
 				// shift windowBase until first sequence number in window is unACKed
-				while( windowBase < (totPackets) &&  ACKED[windowBase] ) {
+				while( windowBase < (totPackets) &&  ACKED[windowBase%SIZE_MAX_SEQ] ) {
 					windowBase++;
+
+					ACKED[(windowBase-1) % SIZE_MAX_SEQ] = 0;
+					sentPackets[(windowBase-1) % SIZE_MAX_SEQ] = 0;
+					pktTimers[(windowBase-1) % SIZE_MAX_SEQ] = 0;
 				}
 			}
 			if (windowBase >= totPackets) { break; }
@@ -160,12 +168,13 @@ int main(int argc, char* argv[])
 			FD_SET(sockfd, &set);
 
 			if (select(sockfd+1, &set, NULL, NULL, &timeout) > 0) {
+				//fprintf(stderr, "HERE 4 \n");
 				if(recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&cli_addr, (socklen_t *)&clen) == -1) {
 					fprintf(stderr, "ERROR: a problem occured while retrieving a packet from the receiver\n");
 					exit(1);
 				}
 				printf("Receiving packet %d\n",
-				inPacket.seq);
+				(inPacket.seq*DATA_SIZE));
 				recPacket = true;
 			}
 
@@ -174,7 +183,21 @@ int main(int argc, char* argv[])
 				exit(1);
 			}
 			else if (recPacket){
-				if (inPacket.seq < windowBase || inPacket.seq > (windowBase	+ cwnd)) {
+				//fprintf(stderr, "HERE 5 \n");
+
+				if (inPacket.seq < (windowBase%SIZE_MAX_SEQ)) {
+					fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
+					exit(1);
+				}
+				
+				if (((windowBase+ cwnd)%SIZE_MAX_SEQ) < cwnd) {
+
+					if (inPacket.seq > ((windowBase+ cwnd)%SIZE_MAX_SEQ) && inPacket.seq < (windowBase%SIZE_MAX_SEQ)) {
+						fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
+						exit(1);
+					}
+				} 
+				else if (inPacket.seq > ((windowBase+ cwnd)%SIZE_MAX_SEQ)){
 					fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
 					exit(1);
 				}
@@ -184,21 +207,25 @@ int main(int argc, char* argv[])
 
 			int boundary = windowBase + cwnd;
 			if (boundary > totPackets) {
+				//fprintf(stderr, "HERE 6 \n");
 				boundary = totPackets;
 			}
 
 			for (curSeqNum = windowBase; curSeqNum < boundary; curSeqNum++ ) {		// SEND or receive ACKs for each packet in window
-				
+				//fprintf(stderr, "HERE 1 \n");
 				//printf("\n\n IN FOR LOOP: \n window base = %d, \ncurrent seq number = %d, \ncurrent sequence number sent yet? %d,\ncurrent sequence number ACKed yet? %d,\nreceived packet? %d \n \n", windowBase, curSeqNum, sentPackets[curSeqNum], ACKED[curSeqNum], recPacket);
 
-				if(! sentPackets[curSeqNum])						// not yet sent
+				indexCSN = curSeqNum % SIZE_MAX_SEQ;
+
+				if(! sentPackets[indexCSN])						// not yet sent
 				{
 					// CREATE AND SEND PACKET
+					// fprintf(stderr, "HERE 2 \n");
 
 					memset((char*)&outPacket, 0, sizeof(outPacket));
 
 					outPacket.type = DATA;
-					outPacket.seq = curSeqNum;
+					outPacket.seq = indexCSN;
 
 					curSeqPos = curSeqNum * DATA_SIZE;
 
@@ -220,26 +247,30 @@ int main(int argc, char* argv[])
 					
 					if (SYNsent) {
 						printf("Sending packet %d %d\n",
-							outPacket.seq, windowBase);
+							(outPacket.seq * DATA_SIZE), (windowBase* DATA_SIZE)%MAX_SEQUENCE_NUM);
 					}
 					else {
 						printf("Sending packet %d %d SYN\n",
-							outPacket.seq, windowBase);
+							(outPacket.seq* DATA_SIZE), (windowBase* DATA_SIZE)% MAX_SEQUENCE_NUM);
 						SYNsent = 1;
 					}
 					
 
-					sentPackets[curSeqNum] = 1;
+					sentPackets[indexCSN] = 1;
 					generalTimer = std::clock();
 					
 					// START TIMER
-					pktTimers[curSeqNum] = std::clock();
+					pktTimers[indexCSN] = std::clock();
 				}
-				else if( newACK && inPacket.seq == curSeqNum) {		// ACKed
-					ACKED[curSeqNum] = 1;
+				else if( newACK && inPacket.seq == indexCSN) {		// ACKed
+					// fprintf(stderr, "HERE 3 \n");
+
+					ACKED[indexCSN] = 1;
 				}
-				else if(sentPackets[curSeqNum] && !ACKED[curSeqNum]) {						// unACKed
-					timePassed = ( std::clock() - pktTimers[curSeqNum] ) / (double) CLOCKS_PER_SEC;
+				else if(sentPackets[indexCSN] && !ACKED[indexCSN]) {						// unACKed
+					
+					// fprintf(stderr, "HERE 4 \n");
+					timePassed = ( std::clock() - pktTimers[indexCSN] ) / (double) CLOCKS_PER_SEC;
 					
 					if (timePassed > 0.5) { 	// timed out-- resend packet
 						
@@ -247,7 +278,7 @@ int main(int argc, char* argv[])
 						memset((char*)&outPacket, 0, sizeof(outPacket));
 
 						outPacket.type = DATA;
-						outPacket.seq = curSeqNum;
+						outPacket.seq = indexCSN;
 
 						curSeqPos = curSeqNum * DATA_SIZE;
 
@@ -267,11 +298,11 @@ int main(int argc, char* argv[])
 							exit(1);
 						}	
 						printf("Sending packet %d %d Retransmission\n",
-							outPacket.seq, windowBase);
+							(outPacket.seq* DATA_SIZE), (windowBase* DATA_SIZE)% MAX_SEQUENCE_NUM);
 						generalTimer = std::clock();
 
 						// RESTART TIMER
-						pktTimers[curSeqNum] = std::clock();
+						pktTimers[indexCSN] = std::clock();
 					}
 
 				}
@@ -282,7 +313,7 @@ int main(int argc, char* argv[])
 		// all data packets sent, send FIN
 		memset((char*)&outPacket, 0, sizeof(outPacket));
 		outPacket.type = FIN;
-		outPacket.seq = curSeqNum;
+		outPacket.seq = curSeqNum % SIZE_MAX_SEQ;
 		outPacket.size = 0;
 
 		if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr *)&cli_addr, clen) == -1)
@@ -292,7 +323,7 @@ int main(int argc, char* argv[])
 		}
 		
 		printf("Sending packet %d %d FIN\n",
-				outPacket.seq, windowBase);
+				(outPacket.seq* DATA_SIZE), (windowBase* DATA_SIZE)% MAX_SEQUENCE_NUM);
 		
 		// wait for FIN ACK
 		if (recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&cli_addr, (socklen_t *)&clen) == -1)
@@ -301,7 +332,7 @@ int main(int argc, char* argv[])
 			exit(1);
 		}	
 		printf("Receiving packet %d\n",
-				inPacket.seq);
+				(inPacket.seq * DATA_SIZE));
 				
 		//printf("Connection closed\n");
 		free(file_buf);

@@ -6,6 +6,7 @@
 #define DATA_SIZE 1015
 #define PACKET_SIZE 1024
 #define WINDOW_SIZE 5120
+#define MAX_SEQUENCE_NUM 30720
 
 #define REQ '1'
 #define DATA '2'

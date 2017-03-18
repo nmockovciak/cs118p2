@@ -191,9 +191,9 @@ int main(int argc, char* argv[])
 					pcktsReceived[seqInWindow] = 1;
 				}
 			}
-			else {
-				continue;
-			}
+			// else {
+			// 	continue;
+			// }
 			
 		}
 		else {

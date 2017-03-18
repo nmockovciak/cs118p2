@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
 			exit(1);
 		}
 
-	// 	printf("Sending packet SYN\n");
+	 	printf("Sending packet SYN\n");
 
 	// 	if (recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&srv_addr, (socklen_t *)&slen) == -1) {
 	// 		fclose(fp);

@@ -186,7 +186,7 @@ int main(int argc, char* argv[])
 
 				if (inPacket.seq < (windowBase%SIZE_MAX_SEQ)) {
 					fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
-					exit(1);
+					//exit(1);
 				}
 				
 				if (((windowBase+ cwnd)%SIZE_MAX_SEQ) < cwnd) {

@@ -1,4 +1,3 @@
-/* Nicolas Mockovciak 704337245*/
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

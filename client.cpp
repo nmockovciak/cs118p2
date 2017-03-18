@@ -1,4 +1,3 @@
-/* Nicolas Mockovciak 704337245*/
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -66,13 +65,27 @@ int main(int argc, char* argv[])
 	outPacket.size = strlen(filename);
 	memcpy(outPacket.data, filename, outPacket.size);
 	
-	if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr*)&srv_addr, slen) == -1)
-	{
-		fprintf(stderr, "ERROR: An error occured while sending a file request\n");
-		exit(1);
-	}
+	// while(true) {
 
-	printf("Sending packet SYN\n");
+
+		if (sendto(sockfd, &outPacket, sizeof(outPacket), 0, (struct sockaddr*)&srv_addr, slen) == -1)
+		{
+			fprintf(stderr, "ERROR: An error occured while sending a file request\n");
+			exit(1);
+		}
+
+	// 	printf("Sending packet SYN\n");
+
+	// 	if (recvfrom(sockfd, &inPacket, sizeof(inPacket), 0, (struct sockaddr *)&srv_addr, (socklen_t *)&slen) == -1) {
+	// 		fclose(fp);
+	// 		fprintf(stderr, "ERROR: A problem occured while receiving the file\n");
+	// 		exit(1);
+	// 	}
+
+	// 	if (select(sockfd+1, &set, NULL, NULL, &timeout) > 0) {
+
+	// 	}
+	// }	
 
 	//printf("Request sent... Awaiting file\n");
 	
@@ -125,13 +138,13 @@ int main(int argc, char* argv[])
 			outPacket.seq = inPacket.seq;
 			seqInWindow = inPacket.seq - (windowBase % SIZE_MAX_SEQ);
 
-			// if (inPacket.seq < windowBase && inPacket.seq > (windowBase - cwnd) ) {
-			// 	// just send ACK, below
-			// }
-
-			//fprintf(stderr, "\nHERE I AM!\n inPacket.seq = %d\n windowBase = %d\n (windowBase+cwnd) SIZE_MAX_SEQ = %d\n windowBase SIZE_MAX_SEQ = %d \n", inPacket.seq, windowBase, (windowBase+cwnd)%SIZE_MAX_SEQ, windowBase%SIZE_MAX_SEQ);
-
-			if ( ( ((windowBase+cwnd)%SIZE_MAX_SEQ > windowBase%SIZE_MAX_SEQ) && (inPacket.seq >= windowBase%SIZE_MAX_SEQ && inPacket.seq < (windowBase + cwnd)%SIZE_MAX_SEQ) ) || 
+			// recieved an DATA packet from previous window:
+			if ( ( ((windowBase)%SIZE_MAX_SEQ > (windowBase - cwnd) %SIZE_MAX_SEQ) && (inPacket.seq >= (windowBase - cwnd)%SIZE_MAX_SEQ && inPacket.seq < (windowBase)%SIZE_MAX_SEQ) ) ||
+					( ((windowBase)%SIZE_MAX_SEQ < (windowBase-cwnd) % SIZE_MAX_SEQ)  && !( inPacket.seq < (windowBase-cwnd)%SIZE_MAX_SEQ && inPacket.seq >= (windowBase)%SIZE_MAX_SEQ) )
+			) {
+				// just send ACK, below
+			}
+			else if ( ( ((windowBase+cwnd)%SIZE_MAX_SEQ > windowBase%SIZE_MAX_SEQ) && (inPacket.seq >= windowBase%SIZE_MAX_SEQ && inPacket.seq < (windowBase + cwnd)%SIZE_MAX_SEQ) ) || 
 						( ((windowBase+cwnd)%SIZE_MAX_SEQ < windowBase % SIZE_MAX_SEQ)  && !( inPacket.seq < windowBase%SIZE_MAX_SEQ && inPacket.seq >= (windowBase+cwnd)%SIZE_MAX_SEQ) )) {
 
 				//fprintf(stderr, "IN IF STATEMENT THO\n\n");

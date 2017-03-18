@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
 				newACK = true;
 
 				if (inPacket.seq < (windowBase%SIZE_MAX_SEQ)) {
-					fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
+					//fprintf(stderr, "ERROR: Received an ACK outside the current window\n");
 					//exit(1);
 					newACK = false;
 				}
